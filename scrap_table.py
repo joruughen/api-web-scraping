@@ -1,75 +1,104 @@
-from selenium import webdriver
-from selenium.webdriver.chrome.service import Service
-from selenium.webdriver.common.by import By
-from selenium.webdriver.support.ui import WebDriverWait
-from selenium.webdriver.support import expected_conditions as EC
-from bs4 import BeautifulSoup
 import boto3
 import uuid
 
-def lambda_handler(event, context):
-    # Configura Selenium con el driver de Chrome
-    service = Service('/path/to/chromedriver')  # Cambia esto por la ruta de tu ChromeDriver
-    driver = webdriver.Chrome(service=service)
+def create_and_populate_table():
+    # Conexión a DynamoDB
+    dynamodb = boto3.resource('dynamodb')
+    table_name = "TablaWebScrapping"
 
+    # Intentar crear la tabla
     try:
-        # URL de la página web
-        url = "https://ultimosismo.igp.gob.pe/ultimo-sismo/sismos-reportados"
-        driver.get(url)
-
-        # Esperar a que la tabla cargue (ajusta el tiempo si es necesario)
-        WebDriverWait(driver, 10).until(
-            EC.presence_of_element_located((By.CLASS_NAME, "table-responsive"))
-        )
-
-        # Obtener el HTML renderizado
-        html = driver.page_source
-        soup = BeautifulSoup(html, 'html.parser')
-
-        # Buscar la tabla
-        table = soup.find('table', {'class': 'table-responsive'})
-        if not table:
-            return {
-                'statusCode': 404,
-                'body': 'No se encontró la tabla en la página web'
+        table = dynamodb.create_table(
+            TableName=table_name,
+            KeySchema=[
+                {
+                    'AttributeName': 'id',  # Clave primaria
+                    'KeyType': 'HASH'      # Partition Key
+                }
+            ],
+            AttributeDefinitions=[
+                {
+                    'AttributeName': 'id',
+                    'AttributeType': 'S'  # Tipo String
+                }
+            ],
+            ProvisionedThroughput={
+                'ReadCapacityUnits': 5,
+                'WriteCapacityUnits': 5
             }
+        )
+        
+        # Esperar a que la tabla esté activa
+        print("Creando la tabla. Esto puede tardar unos momentos...")
+        table.meta.client.get_waiter('table_exists').wait(TableName=table_name)
+        print(f"Tabla {table_name} creada exitosamente.")
+    except dynamodb.meta.client.exceptions.ResourceInUseException:
+        print(f"La tabla {table_name} ya existe.")
 
-        # Extraer las filas de la tabla
-        rows = []
-        for row in table.find('tbody').find_all('tr'):
-            cells = row.find_all('td')
-            if len(cells) > 0:
-                rows.append({
-                    'reporte': cells[0].text.strip(),
-                    'referencia': cells[1].text.strip(),
-                    'fecha_hora': cells[2].text.strip(),
-                    'magnitud': cells[3].text.strip(),
-                    'descarga': cells[4].text.strip()
-                })
+    # Conectar a la tabla
+    table = dynamodb.Table(table_name)
 
-        # Limitar los resultados a los últimos 10 sismos
-        rows = rows[:10]
-
-        # Guardar en DynamoDB
-        dynamodb = boto3.resource('dynamodb')
-        table = dynamodb.Table('TablaWebScrapping')
-
-        # Eliminar datos existentes
-        scan = table.scan()
-        with table.batch_writer() as batch:
-            for each in scan['Items']:
-                batch.delete_item(Key={'id': each['id']})
-
-        # Insertar los nuevos datos
-        for row in rows:
-            row['id'] = str(uuid.uuid4())
-            table.put_item(Item=row)
-
-        # Retornar los datos
-        return {
-            'statusCode': 200,
-            'body': rows
+    # Datos de ejemplo para insertar
+    data = [
+        {
+            "fecha_hora": "16/11/2024 10:00",
+            "magnitud": "3.8",
+            "ubicacion": "39 km al S de Lomas, Caravelí - Arequipa"
+        },
+        {
+            "fecha_hora": "16/11/2024 14:00",
+            "magnitud": "4.0",
+            "ubicacion": "13 km al S de Tibillo, Palpa - Ica"
+        },
+        {
+            "fecha_hora": "13/11/2024 08:30",
+            "magnitud": "3.5",
+            "ubicacion": "12 km al NE de Pozuzo, Oxapampa - Pasco"
+        },
+        {
+            "fecha_hora": "14/11/2024 18:20",
+            "magnitud": "3.5",
+            "ubicacion": "23 km al SO de Chilca, Cañete - Lima"
+        },
+        {
+            "fecha_hora": "15/11/2024 12:10",
+            "magnitud": "3.8",
+            "ubicacion": "20 km al O de Atico, Caravelí - Arequipa"
+        },
+        {
+            "fecha_hora": "15/11/2024 17:45",
+            "magnitud": "4.2",
+            "ubicacion": "34 km al S de Pisco, Pisco - Ica"
+        },
+        {
+            "fecha_hora": "14/11/2024 09:40",
+            "magnitud": "4.1",
+            "ubicacion": "51 km al O de Curimaná, Padre Abad - Ucayali"
+        },
+        {
+            "fecha_hora": "14/11/2024 15:30",
+            "magnitud": "3.5",
+            "ubicacion": "23 km al SO de Ancón, Lima - Lima"
+        },
+        {
+            "fecha_hora": "18/11/2024 02:15",
+            "magnitud": "4.8",
+            "ubicacion": "19 km al S de Camaná, Camaná - Arequipa"
+        },
+        {
+            "fecha_hora": "13/11/2024 04:20",
+            "magnitud": "3.6",
+            "ubicacion": "8 km al O de Aucayacu, Leoncio Prado - Huánuco"
         }
+    ]
 
-    finally:
-        driver.quit()  # Cierra el navegador
+    # Insertar datos en la tabla
+    for item in data:
+        item['id'] = str(uuid.uuid4())  # Generar un ID único para cada elemento
+        table.put_item(Item=item)
+
+    print(f"Se han insertado {len(data)} elementos en la tabla {table_name}.")
+
+# Ejecutar la función
+if __name__ == "__main__":
+    create_and_populate_table()
