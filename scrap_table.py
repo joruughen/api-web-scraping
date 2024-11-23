@@ -4,10 +4,10 @@ import boto3
 import uuid
 
 def lambda_handler(event, context):
-    # URL de la página web de los sismos
+    # URL de la página de los sismos reportados
     url = "https://ultimosismo.igp.gob.pe/ultimo-sismo/sismos-reportados"
 
-    # Realizar la solicitud HTTP
+    # Realizar la solicitud HTTP a la página
     response = requests.get(url)
     if response.status_code != 200:
         return {
@@ -18,8 +18,8 @@ def lambda_handler(event, context):
     # Parsear el contenido HTML
     soup = BeautifulSoup(response.content, 'html.parser')
 
-    # Buscar la tabla con los sismos
-    table = soup.find('table')
+    # Buscar la tabla con los datos de los sismos
+    table = soup.find('table', {'class': 'table-responsive'})
     if not table:
         return {
             'statusCode': 404,
@@ -28,26 +28,25 @@ def lambda_handler(event, context):
 
     # Extraer las filas de la tabla
     rows = []
-    for row in table.find_all('tr')[1:]:  # Omitir el encabezado
+    for row in table.find('tbody').find_all('tr'):  # Navegar dentro del tbody
         cells = row.find_all('td')
         if len(cells) > 0:
             rows.append({
-                'fecha_hora': f"{cells[0].text.strip()} {cells[1].text.strip()}",
-                'latitud': cells[2].text.strip(),
-                'longitud': cells[3].text.strip(),
-                'profundidad': cells[4].text.strip(),
-                'magnitud': cells[5].text.strip(),
-                'ubicacion': cells[6].text.strip()
+                'reporte': cells[0].text.strip(),
+                'referencia': cells[1].text.strip(),
+                'fecha_hora': cells[2].text.strip(),
+                'magnitud': cells[3].text.strip(),
+                'descarga': cells[4].text.strip()
             })
 
-    # Limitar a los últimos 10 sismos
+    # Limitar los resultados a los últimos 10 sismos
     rows = rows[:10]
 
-    # Guardar los datos en DynamoDB
+    # Conectar con DynamoDB
     dynamodb = boto3.resource('dynamodb')
-    table = dynamodb.Table('TablaWebScrapping')
+    table = dynamodb.Table('TablaWebScrapping')  # Asegúrate de tener esta tabla creada
 
-    # Eliminar todos los elementos existentes de la tabla
+    # Eliminar todos los elementos existentes en la tabla
     scan = table.scan()
     with table.batch_writer() as batch:
         for each in scan['Items']:
@@ -57,12 +56,12 @@ def lambda_handler(event, context):
                 }
             )
 
-    # Insertar los nuevos datos
+    # Insertar los nuevos datos en la tabla
     for row in rows:
         row['id'] = str(uuid.uuid4())  # Generar un ID único
         table.put_item(Item=row)
 
-    # Retornar los datos como resultado
+    # Retornar los datos como respuesta
     return {
         'statusCode': 200,
         'body': rows
