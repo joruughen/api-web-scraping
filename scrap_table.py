@@ -1,12 +1,12 @@
 import boto3
 import uuid
 
-def create_and_populate_table():
-    # Conexión a DynamoDB
+def lambda_handler(event, context):
+    # Configuración
     dynamodb = boto3.resource('dynamodb')
     table_name = "TablaWebScrapping"
 
-    # Intentar crear la tabla
+    # Intentar crear la tabla si no existe
     try:
         table = dynamodb.create_table(
             TableName=table_name,
@@ -27,15 +27,13 @@ def create_and_populate_table():
                 'WriteCapacityUnits': 5
             }
         )
-        
         # Esperar a que la tabla esté activa
-        print("Creando la tabla. Esto puede tardar unos momentos...")
         table.meta.client.get_waiter('table_exists').wait(TableName=table_name)
-        print(f"Tabla {table_name} creada exitosamente.")
     except dynamodb.meta.client.exceptions.ResourceInUseException:
-        print(f"La tabla {table_name} ya existe.")
+        # La tabla ya existe
+        pass
 
-    # Conectar a la tabla
+    # Conectar a la tabla DynamoDB
     table = dynamodb.Table(table_name)
 
     # Datos de ejemplo para insertar
@@ -92,13 +90,13 @@ def create_and_populate_table():
         }
     ]
 
-    # Insertar datos en la tabla
+    # Insertar datos en DynamoDB
     for item in data:
         item['id'] = str(uuid.uuid4())  # Generar un ID único para cada elemento
         table.put_item(Item=item)
 
-    print(f"Se han insertado {len(data)} elementos en la tabla {table_name}.")
-
-# Ejecutar la función
-if __name__ == "__main__":
-    create_and_populate_table()
+    # Respuesta de éxito
+    return {
+        "statusCode": 200,
+        "body": "Datos subidos exitosamente a DynamoDB"
+    }
