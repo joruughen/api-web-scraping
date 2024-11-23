@@ -32,13 +32,12 @@ def lambda_handler(event, context):
         cells = row.find_all('td')
         if len(cells) > 0:
             rows.append({
-                'Fecha': cells[0].text.strip(),
-                'Hora': cells[1].text.strip(),
-                'Latitud': cells[2].text.strip(),
-                'Longitud': cells[3].text.strip(),
-                'Profundidad': cells[4].text.strip(),
-                'Magnitud': cells[5].text.strip(),
-                'Ubicación': cells[6].text.strip()
+                'fecha_hora': f"{cells[0].text.strip()} {cells[1].text.strip()}",
+                'latitud': cells[2].text.strip(),
+                'longitud': cells[3].text.strip(),
+                'profundidad': cells[4].text.strip(),
+                'magnitud': cells[5].text.strip(),
+                'ubicacion': cells[6].text.strip()
             })
 
     # Limitar a los últimos 10 sismos
@@ -48,7 +47,17 @@ def lambda_handler(event, context):
     dynamodb = boto3.resource('dynamodb')
     table = dynamodb.Table('TablaWebScrapping')
 
-    # Insertar los datos en la tabla
+    # Eliminar todos los elementos existentes de la tabla
+    scan = table.scan()
+    with table.batch_writer() as batch:
+        for each in scan['Items']:
+            batch.delete_item(
+                Key={
+                    'id': each['id']
+                }
+            )
+
+    # Insertar los nuevos datos
     for row in rows:
         row['id'] = str(uuid.uuid4())  # Generar un ID único
         table.put_item(Item=row)
